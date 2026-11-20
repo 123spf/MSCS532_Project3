@@ -42,22 +42,27 @@ def binary_search_category(category_list, target):
     return -1
 
 
-# 3. Phase 2 Upgrade: Heapsort + Bucket Sort
+# 3. Phase 3 Iterative max_heapify 
 def max_heapify(resource_tuples, n, i):
-    """Maintains the max-heap property for paired tuples (distance, name)."""
-    largest = i
-    left = 2 * i + 1
-    right = 2 * i + 2
+    """Iteratively maintains the max-heap property for (distance, name) tuples."""
+    while True:
+        largest = i
+        left = 2 * i + 1
+        right = 2 * i + 2
 
-    # Compare distances (index 0); ties break deterministically by name (index 1)
-    if left < n and resource_tuples[left] > resource_tuples[largest]:
-        largest = left
-    if right < n and resource_tuples[right] > resource_tuples[largest]:
-        largest = right
+        if left < n and resource_tuples[left] > resource_tuples[largest]:
+            largest = left
+        if right < n and resource_tuples[right] > resource_tuples[largest]:
+            largest = right
 
-    if largest != i:
-        resource_tuples[i], resource_tuples[largest] = resource_tuples[largest], resource_tuples[i]
-        max_heapify(resource_tuples, n, largest)
+        if largest == i:
+            break
+
+        resource_tuples[i], resource_tuples[largest] = (
+            resource_tuples[largest],
+            resource_tuples[i],
+        )
+        i = largest
 
 
 def heapsort_resources(resource_tuples):
