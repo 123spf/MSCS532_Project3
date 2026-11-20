@@ -111,6 +111,17 @@ def find_walkable_resources(user_categories, max_radius=1.5):
     return list(results), list(fallbacks)
 
 
+def add_resource(category, distance, name, fallback=None):
+    """Adds a facility to RESOURCE_CATALOG and clears stale cache entries."""
+    if category not in RESOURCE_CATALOG:
+        RESOURCE_CATALOG[category] = {
+            "resources": [],
+            "fallback": fallback or f"Contact 211 for {category} assistance",
+        }
+    RESOURCE_CATALOG[category]["resources"].append((distance, name))
+    _cached_search.cache_clear()
+
+
 if __name__ == "__main__":
     results, fallbacks = find_walkable_resources(["Food Bank", "Medical"], max_radius=1.5)
     print("Walkable Resources:", results)
