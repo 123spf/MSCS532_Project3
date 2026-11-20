@@ -42,7 +42,19 @@ def binary_search_category(category_list, target):
     return -1
 
 
-# 3. Phase 3 Iterative max_heapify 
+# 3. Phase 3 Upgrade: Bounded Bucket Sort + Iterative Heapsort + Insertion Sort Cutoff
+def insertion_sort_resources(resource_tuples):
+    """Sorts small lists of (distance, name) tuples in place."""
+    for i in range(1, len(resource_tuples)):
+        key = resource_tuples[i]
+        j = i - 1
+        while j >= 0 and resource_tuples[j] > key:
+            resource_tuples[j + 1] = resource_tuples[j]
+            j -= 1
+        resource_tuples[j + 1] = key
+    return resource_tuples
+
+
 def max_heapify(resource_tuples, n, i):
     """Iteratively maintains the max-heap property for (distance, name) tuples."""
     while True:
@@ -77,32 +89,42 @@ def heapsort_resources(resource_tuples):
     return resource_tuples
 
 
-def bucket_sort_resources(resource_tuples, max_radius):
-    """Groups resources into spatial buckets and sorts each bucket with Heapsort."""
+def bucket_sort_resources(resource_tuples, max_radius, small_cutoff=16):
+    """Groups resources into bounded spatial buckets and writes sorted results in place."""
     n = len(resource_tuples)
     if n == 0:
         return resource_tuples
 
-    buckets = [[] for _ in range(n)]
-
-    for item in resource_tuples:
-        distance = item[0]
+    for distance, _ in resource_tuples:
         if distance < 0:
             raise ValueError(f"GPS calculation error: negative distance ({distance} mi) detected.")
         if distance > max_radius:
             raise ValueError(f"Filter error: distance ({distance} mi) exceeds max_radius ({max_radius} mi).")
 
-        # Add 0.01 buffer so boundary distances (distance == max_radius) stay in [0, 1)
-        normalized = distance / (max_radius + 0.01)
-        index = int(n * normalized)
+    if n <= small_cutoff:
+        return insertion_sort_resources(resource_tuples)
+
+    num_buckets = max(1, int(n ** 0.5))
+    buckets = [[] for _ in range(num_buckets)]
+
+    for item in resource_tuples:
+        normalized = item[0] / (max_radius + 0.01)
+        index = int(num_buckets * normalized)
         buckets[index].append(item)
 
-    result = []
-    for i in range(n):
-        buckets[i] = heapsort_resources(buckets[i])
-        result.extend(buckets[i])
+    pos = 0
+    for bucket in buckets:
+        if not bucket:
+            continue
+        if len(bucket) <= small_cutoff:
+            insertion_sort_resources(bucket)
+        else:
+            heapsort_resources(bucket)
+        for item in bucket:
+            resource_tuples[pos] = item
+            pos += 1
 
-    return result
+    return resource_tuples
 
 
 # 4. Main Search and Filter Workflow
