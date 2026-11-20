@@ -52,6 +52,32 @@ def run_merge_sort(data):
     return data
 
 
+def randomized_partition(arr, low, high):
+    """Partitions subarray around a randomly chosen pivot (CLRS 7.1 & 7.3)."""
+    pivot_idx = random.randint(low, high)
+    arr[pivot_idx], arr[high] = arr[high], arr[pivot_idx]
+    pivot = arr[high]
+    i = low - 1
+    for j in range(low, high):
+        if arr[j] <= pivot:
+            i += 1
+            arr[i], arr[j] = arr[j], arr[i]
+    arr[i + 1], arr[high] = arr[high], arr[i + 1]
+    return i + 1
+
+
+def randomized_quicksort(arr, low, high):
+    if low < high:
+        q = randomized_partition(arr, low, high)
+        randomized_quicksort(arr, low, q - 1)
+        randomized_quicksort(arr, q + 1, high)
+
+
+def run_quicksort(data):
+    randomized_quicksort(data, 0, len(data) - 1)
+    return data
+
+
 def time_sort_ms(sort_fn, sample, runs=3):
     """Returns average runtime (ms) over multiple runs and the sorted output."""
     total_ms = 0.0
@@ -83,16 +109,19 @@ def run_sort_scenario(label, generator, sizes, max_radius=1.5):
         bucket_ms, bucket_out = time_sort_ms(
             lambda d: bucket_sort_resources(d, max_radius), sample
         )
-        assert merge_out == bucket_out, "Sort outputs do not match!"
+        quick_ms, quick_out = time_sort_ms(run_quicksort, sample)
+        assert merge_out == bucket_out == quick_out, "Sort outputs do not match!"
 
-        _, merge_peak_kb = measure_memory_kb(run_merge_sort, sample)
-        _, bucket_peak_kb = measure_memory_kb(
+        _, merge_kb = measure_memory_kb(run_merge_sort, sample)
+        _, bucket_kb = measure_memory_kb(
             lambda d: bucket_sort_resources(d, max_radius), sample
         )
+        _, quick_kb = measure_memory_kb(run_quicksort, sample)
 
         print(
-            f"n={n:<5} | Merge: {merge_ms:7.3f} ms ({merge_peak_kb:7.1f} KB peak) "
-            f"| Bucket+Heap: {bucket_ms:7.3f} ms ({bucket_peak_kb:7.1f} KB peak)"
+            f"n={n:<5} | Merge: {merge_ms:6.2f} ms ({merge_kb:5.1f} KB) "
+            f"| Bucket+Heap: {bucket_ms:6.2f} ms ({bucket_kb:5.1f} KB) "
+            f"| Quick: {quick_ms:6.2f} ms ({quick_kb:5.1f} KB)"
         )
 
 
