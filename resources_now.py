@@ -5,41 +5,30 @@ Phase 2: Data Structures, Sorting Algorithms, and Error Handling
 
 from itertools import chain
 
-# 1. Structure of Arrays (SoA): Parallel lists sorted alphabetically by category
-categories = ["Food Bank", "Housing", "Medical"]
-
-resource_names = [
-    ["Downtown Pantry", "Community Kitchen", "Westside Food Hub"],
-    ["Hope Shelter", "City Transitional"],
-    ["Free Clinic A", "Urgent Care Center"]
-]
-
-resource_distances = [
-    [1.2, 0.4, 2.5],
-    [3.1, 2.8],
-    [0.8, 0.3]
-]
-
-statewide_fallbacks = [
-    "211 Food Assistance Hotline",
-    "State Housing Authority (211)",
-    "Statewide Nurse Advice Line"
-]
-
-
-# 2. Binary Search: Worst-case O(log n) category lookup
-def binary_search_category(category_list, target):
-    """Locates the index of a target category in a sorted list."""
-    low, high = 0, len(category_list) - 1
-    while low <= high:
-        mid = (low + high) // 2
-        if category_list[mid] == target:
-            return mid
-        elif category_list[mid] < target:
-            low = mid + 1
-        else:
-            high = mid - 1
-    return -1
+RESOURCE_CATALOG = {
+    "Food Bank": {
+        "resources": [
+            (1.2, "Downtown Pantry"),
+            (0.4, "Community Kitchen"),
+            (2.5, "Westside Food Hub"),
+        ],
+        "fallback": "211 Food Assistance Hotline",
+    },
+    "Housing": {
+        "resources": [
+            (3.1, "Hope Shelter"),
+            (2.8, "City Transitional"),
+        ],
+        "fallback": "State Housing Authority (211)",
+    },
+    "Medical": {
+        "resources": [
+            (0.8, "Free Clinic A"),
+            (0.3, "Urgent Care Center"),
+        ],
+        "fallback": "Statewide Nurse Advice Line",
+    },
+}
 
 
 # 3. Phase 3 Upgrade: Bounded Bucket Sort + Iterative Heapsort + Insertion Sort Cutoff
