@@ -1,7 +1,7 @@
 """
 ResourcesNow - Phase 3 Simple Test Suite
 """
-
+import random
 from resources_now import (
     find_walkable_resources,
     quicksort_resources,
@@ -63,6 +63,34 @@ def run_tests():
     assert new_fb == []
     print("Test 8 (Add Resource)   | Passed")
 
+    # Test 9: Stress Test - Cache Eviction Past maxsize=64
+    cached_search.cache_clear()
+    for i in range(1, 101):
+        radius = round(i * 0.1, 1)
+        find_walkable_resources(["Food Bank"], max_radius=radius)
+
+    info = cached_search.cache_info()
+    assert info.currsize == 64
+    assert info.misses == 100
+
+    # Most recent query (10.0) stays cached; oldest query (0.1) was evicted
+    find_walkable_resources(["Food Bank"], max_radius=10.0)
+    assert cached_search.cache_info().hits == 1
+    find_walkable_resources(["Food Bank"], max_radius=0.1)
+    assert cached_search.cache_info().misses == 101
+    print(f"Test 9 (Cache Stress)   | Passed -> {cached_search.cache_info()}")
+
+    # Test 10: Stress Test - High-Volume Quicksort (5,000 Resources)
+    random.seed(42)
+    large_list = []
+    for i in range(5000):
+        dist = round(random.uniform(0.0, 1.5), 3)
+        large_list.append((dist, f"Site_{i}"))
+
+    sorted_large = quicksort_resources(large_list)
+    for i in range(len(sorted_large) - 1):
+        assert sorted_large[i][0] <= sorted_large[i + 1][0]
+    print("Test 10 (5,000 Sort)    | Passed")
 
 if __name__ == "__main__":
     run_tests()
