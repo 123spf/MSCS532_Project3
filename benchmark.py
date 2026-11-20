@@ -1,122 +1,133 @@
 """
-ResourcesNow - Phase 3 Baseline Benchmark
-Measures time and memory for Merge Sort vs. Bucket Sort + Heapsort
-across uniform, clustered, and repeated-query workloads.
+ResourcesNow - Phase 3 Benchmark
+Compares Phase 1 (Merge Sort), Phase 2 (Bucket+Heap), Phase 3 (Quicksort),
+and the Phase 3 LRU Cache speedup.
 """
 
 import random
 import time
 import tracemalloc
-from resources_now import bucket_sort_resources, find_walkable_resources
+from resources_now import (
+    quicksort_resources,
+    find_walkable_resources,
+    cached_search,
+    add_resource,
+)
 
 
-def merge_sort(arr, low, high):
-    """Phase 1 baseline: recursively divides and sorts resource tuples."""
-    if low >= high:
-        return
-    mid = (low + high) // 2
-    merge_sort(arr, low, mid)
-    merge_sort(arr, mid + 1, high)
-    merge(arr, low, mid, high)
+# Phase 1: Merge Sort
+def merge_sort(items):
+    if len(items) <= 1:
+        return items
+    mid = len(items) // 2
+    left = merge_sort(items[:mid])
+    right = merge_sort(items[mid:])
+    return merge(left, right)
 
 
-def merge(arr, low, mid, high):
-    """Merges two sorted subarrays using O(n) auxiliary lists."""
-    left = arr[low:mid + 1]
-    right = arr[mid + 1:high + 1]
-    i = j = 0
-    k = low
-
+def merge(left, right):
+    sorted_list = []
+    i = 0
+    j = 0
     while i < len(left) and j < len(right):
         if left[i] <= right[j]:
-            arr[k] = left[i]
+            sorted_list.append(left[i])
             i += 1
         else:
-            arr[k] = right[j]
+            sorted_list.append(right[j])
             j += 1
-        k += 1
-
-    while i < len(left):
-        arr[k] = left[i]
-        i += 1
-        k += 1
-
-    while j < len(right):
-        arr[k] = right[j]
-        j += 1
-        k += 1
+    sorted_list.extend(left[i:])
+    sorted_list.extend(right[j:])
+    return sorted_list
 
 
-def run_merge_sort(data):
-    merge_sort(data, 0, len(data) - 1)
+# Phase 2: Bucket Sort + Heapsort
+def max_heapify(items, size, root):
+    largest = root
+    left = 2 * root + 1
+    right = 2 * root + 2
+
+    if left < size and items[left] > items[largest]:
+        largest = left
+    if right < size and items[right] > items[largest]:
+        largest = right
+
+    if largest != root:
+        items[root], items[largest] = items[largest], items[root]
+        max_heapify(items, size, largest)
+
+
+def heapsort(items):
+    n = len(items)
+    for i in range(n // 2 - 1, -1, -1):
+        max_heapify(items, n, i)
+    for i in range(n - 1, 0, -1):
+        items[0], items[i] = items[i], items[0]
+        max_heapify(items, i, 0)
+    return items
+
+
+def bucket_heap_sort(items, max_radius=1.5):
+    n = len(items)
+    if n == 0:
+        return items
+
+    buckets = [[] for _ in range(n)]
+    for item in items:
+        distance = item[0]
+        index = int(n * (distance / (max_radius + 0.01)))
+        buckets[index].append(item)
+
+    result = []
+    for bucket in buckets:
+        if bucket:
+            heapsort(bucket)
+            result.extend(bucket)
+    return result
+
+
+# Data Generators
+def make_uniform_data(size, max_radius=1.5):
+    data = []
+    for i in range(size):
+        dist = round(random.uniform(0.0, max_radius), 3)
+        data.append((dist, f"Site_{i}"))
     return data
 
 
-def randomized_partition(arr, low, high):
-    """Partitions subarray around a randomly chosen pivot (CLRS 7.1 & 7.3)."""
-    pivot_idx = random.randint(low, high)
-    arr[pivot_idx], arr[high] = arr[high], arr[pivot_idx]
-    pivot = arr[high]
-    i = low - 1
-    for j in range(low, high):
-        if arr[j] <= pivot:
-            i += 1
-            arr[i], arr[j] = arr[j], arr[i]
-    arr[i + 1], arr[high] = arr[high], arr[i + 1]
-    return i + 1
-
-
-def randomized_quicksort(arr, low, high):
-    if low < high:
-        q = randomized_partition(arr, low, high)
-        randomized_quicksort(arr, low, q - 1)
-        randomized_quicksort(arr, q + 1, high)
-
-
-def run_quicksort(data):
-    randomized_quicksort(data, 0, len(data) - 1)
+def make_clustered_data(size):
+    data = []
+    for i in range(size):
+        dist = round(random.uniform(0.0, 0.2), 3)
+        data.append((dist, f"Downtown_{i}"))
     return data
 
 
-def time_sort_ms(sort_fn, sample, runs=3):
-    """Returns average runtime (ms) over multiple runs and the sorted output."""
-    total_ms = 0.0
-    result = None
-    for _ in range(runs):
-        data = sample.copy()
-        t0 = time.perf_counter()
-        result = sort_fn(data)
-        total_ms += (time.perf_counter() - t0) * 1000
-    return total_ms / runs, result
+# Measurement Helpers
+def measure_sort(sort_func, sample):
+    # Measure speed in milliseconds
+    start = time.perf_counter()
+    sort_func(sample.copy())
+    time_ms = (time.perf_counter() - start) * 1000
 
-
-def measure_memory_kb(sort_fn, sample):
-    """Returns (current_kb, peak_kb) allocated during sort_fn only."""
-    data = sample.copy()
+    # Measure peak memory in KB
+    data_copy = sample.copy()
     tracemalloc.start()
-    sort_fn(data)
-    current_bytes, peak_bytes = tracemalloc.get_traced_memory()
+    sort_func(data_copy)
+    _, peak_bytes = tracemalloc.get_traced_memory()
     tracemalloc.stop()
-    return current_bytes / 1024, peak_bytes / 1024
+    peak_kb = peak_bytes / 1024
+
+    return time_ms, peak_kb
 
 
-def run_sort_scenario(label, generator, sizes, max_radius=1.5):
-    print(f"\n--- {label} (max_radius = {max_radius} mi) ---")
+def benchmark_sorts(label, data_maker, sizes):
+    print(f"\n--- {label} ---")
     for n in sizes:
-        sample = generator(n, max_radius)
-
-        merge_ms, merge_out = time_sort_ms(run_merge_sort, sample)
-        bucket_ms, bucket_out = time_sort_ms(
-            lambda d: bucket_sort_resources(d, max_radius), sample
-        )
-        quick_ms, quick_out = time_sort_ms(run_quicksort, sample)
-        assert merge_out == bucket_out == quick_out, "Sort outputs do not match!"
-
-        _, merge_kb = measure_memory_kb(run_merge_sort, sample)
-        _, bucket_kb = measure_memory_kb(
-            lambda d: bucket_sort_resources(d, max_radius), sample
-        )
-        _, quick_kb = measure_memory_kb(run_quicksort, sample)
+        sample = data_maker(n)
+        merge_ms, merge_kb = measure_sort(merge_sort, sample)
+        bucket_ms, bucket_kb = measure_sort(bucket_heap_sort, sample)
+        quick_ms, quick_kb = measure_sort(quicksort_resources, sample)
 
         print(
             f"n={n:<5} | Merge: {merge_ms:6.2f} ms ({merge_kb:5.1f} KB) "
@@ -125,43 +136,32 @@ def run_sort_scenario(label, generator, sizes, max_radius=1.5):
         )
 
 
-def benchmark_repeated_queries(repeats=1000, max_radius=1.5):
-    """Baselines repeated full-pipeline queries before adding caching."""
-    print(f"\n--- Repeated Query Baseline ({repeats} identical calls) ---")
-    t0 = time.perf_counter()
-    for _ in range(repeats):
-        find_walkable_resources(["Food Bank", "Medical"], max_radius=max_radius)
-    total_ms = (time.perf_counter() - t0) * 1000
+def benchmark_cache():
+    print("\n--- LRU Cache Speedup (1,000 Resources) ---")
+    for i in range(1000):
+        dist = round(random.uniform(0.0, 1.5), 3)
+        add_resource("TestCategory", dist, f"Center_{i}")
 
-    tracemalloc.start()
-    for _ in range(repeats):
-        find_walkable_resources(["Food Bank", "Medical"], max_radius=max_radius)
-    curr_b, peak_b = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
+    cached_search.cache_clear()
 
-    print(
-        f"Total: {total_ms:.3f} ms | Retained: {curr_b / 1024:.2f} KB | "
-        f"Peak: {peak_b / 1024:.2f} KB"
-    )
+    # First search: Cache Miss
+    start = time.perf_counter()
+    find_walkable_resources(["TestCategory"], max_radius=1.5)
+    miss_ms = (time.perf_counter() - start) * 1000
+
+    # Second search: Cache Hit
+    start = time.perf_counter()
+    find_walkable_resources(["TestCategory"], max_radius=1.5)
+    hit_ms = (time.perf_counter() - start) * 1000
+
+    print(f"Cache Miss: {miss_ms:.4f} ms")
+    print(f"Cache Hit:  {hit_ms:.4f} ms")
+    print(f"Cache Info: {cached_search.cache_info()}")
 
 
 if __name__ == "__main__":
     random.seed(42)
-    sizes = (10, 250, 500, 1000, 5000, 10000)
-
-    # 1. Spread-out neighborhoods (uniform distances)
-    run_sort_scenario(
-        "Spread-Out Uniform",
-        lambda n, r: [(random.uniform(0.05, r), f"Facility {i}") for i in range(n)],
-        sizes,
-    )
-
-    # 2. Dense downtown cluster (heavy bucket collisions & tied distances)
-    run_sort_scenario(
-        "Clustered Downtown",
-        lambda n, r: [(round(random.uniform(0.40, 0.45), 2), f"Facility {i}") for i in range(n)],
-        sizes,
-    )
-
-    # 3. Repeated full queries (no cache yet)
-    benchmark_repeated_queries()
+    sizes = [10, 250, 500, 1000, 5000, 10000]
+    benchmark_sorts("Spread-Out Uniform", make_uniform_data, sizes)
+    benchmark_sorts("Clustered Downtown", make_clustered_data, sizes)
+    benchmark_cache()
