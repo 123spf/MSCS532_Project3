@@ -1,7 +1,7 @@
 """
 ResourcesNow - Phase 3 Optimized Resource Locator
-Uses dynamic dictionary indexing, Euclidean GPS distance calculation,
-bounded LRU caching, in-place Randomized Quicksort, and built-in random data generation.
+Core engine using dictionary indexing, Euclidean GPS distance calculation,
+bounded LRU caching, and in-place Randomized Quicksort.
 """
 
 import math
@@ -14,11 +14,8 @@ WALKABLE_PRESETS = (0.5, 1.5)
 # Default sample user location (latitude, longitude)
 DEFAULT_USER_LOCATION = (40.0000, -76.0000)
 
-# Default categories used when generating synthetic datasets
-DEFAULT_CATEGORIES = ("Food Bank", "Housing", "Medical")
-
 # Empty dictionary-backed catalog populated dynamically via add_resource()
-# or populate_random_catalog(). Stores immutable (name, lat, lon) tuples to save RAM.
+# or data_generator.py. Stores immutable (name, lat, lon) tuples to save RAM.
 RESOURCE_CATALOG = {}
 
 
@@ -158,59 +155,3 @@ def add_resource(category, name, lat, lon, fallback=None):
 
     RESOURCE_CATALOG[category]["resources"].append((name, lat, lon))
     cached_search.cache_clear()
-
-
-def populate_random_catalog(
-    num_resources,
-    categories=DEFAULT_CATEGORIES,
-    center_lat=DEFAULT_USER_LOCATION[0],
-    center_lon=DEFAULT_USER_LOCATION[1],
-    max_spread_miles=2.0,
-    distribution="uniform",
-    seed=42,
-):
-    """
-    Populates RESOURCE_CATALOG with synthetic (name, lat, lon) tuples using
-    Python's built-in random module. Supports 'uniform' and 'clustered' layouts.
-    """
-    validate_coordinates(center_lat, center_lon)
-    clear_catalog()
-
-    # Dedicated Random instance keeps dataset generation reproducible
-    rng = random.Random(seed)
-
-    for category in categories:
-        RESOURCE_CATALOG[category] = {
-            "resources": [],
-            "fallback": f"No walkable {category} nearby. Contact: Local Helpline (211)",
-        }
-
-    for i in range(num_resources):
-        category = categories[i % len(categories)]
-        name = f"{category} Site {i + 1}"
-
-        # In clustered mode, place 80% of facilities within a tight 0.25-mile downtown core
-        if distribution == "clustered" and rng.random() < 0.8:
-            spread_deg = 0.25 / 69.0
-        else:
-            spread_deg = max_spread_miles / 69.0
-
-        fac_lat = center_lat + rng.uniform(-spread_deg, spread_deg)
-        fac_lon = center_lon + rng.uniform(-spread_deg, spread_deg)
-        RESOURCE_CATALOG[category]["resources"].append((name, fac_lat, fac_lon))
-
-    cached_search.cache_clear()
-
-
-if __name__ == "__main__":
-    # Demo: generate 15 synthetic facilities and query both walkable presets
-    populate_random_catalog(15, distribution="uniform", seed=42)
-
-    for preset in WALKABLE_PRESETS:
-        results, fallbacks = find_walkable_resources(
-            ["Food Bank", "Medical", "Housing"], max_radius=preset
-        )
-        print(f"\nWalkable Resources ({preset} mi): {len(results)} found")
-        for dist, name in results:
-            print(f"  {dist:.4f} mi - {name}")
-        print(f"Fallbacks: {fallbacks}")
