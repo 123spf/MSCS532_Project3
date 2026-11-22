@@ -1,5 +1,5 @@
 """
-ResourcesNow - Phase 3 Simple Test Suite
+ResourcesNow - Phase 3 Test Suite
 """
 import random
 from resources_now import (

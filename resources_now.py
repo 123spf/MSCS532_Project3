@@ -1,119 +1,216 @@
 """
-ResourcesNow - Phase 3
-Dictionary Catalog, Randomized Quicksort, and Bounded LRU Cache
+ResourcesNow - Phase 3 Optimized Resource Locator
+Uses dynamic dictionary indexing, Euclidean GPS distance calculation,
+bounded LRU caching, in-place Randomized Quicksort, and built-in random data generation.
 """
 
-from functools import lru_cache
+import math
 import random
+from functools import lru_cache
 
-# 1. Data Catalog (Dictionary)
-RESOURCE_CATALOG = {
-    "Food Bank": {
-        "resources": [
-            (1.2, "Downtown Pantry"),
-            (0.4, "Community Kitchen"),
-            (2.5, "Westside Food Hub"),
-        ],
-        "fallback": "211 Food Assistance Hotline",
-    },
-    "Housing": {
-        "resources": [
-            (3.1, "Hope Shelter"),
-            (2.8, "City Transitional"),
-        ],
-        "fallback": "State Housing Authority (211)",
-    },
-    "Medical": {
-        "resources": [
-            (0.8, "Free Clinic A"),
-            (0.3, "Urgent Care Center"),
-        ],
-        "fallback": "Statewide Nurse Advice Line",
-    },
-}
+# Supported walkable distance presets (in miles)
+WALKABLE_PRESETS = (0.5, 1.5)
+
+# Default sample user location (latitude, longitude)
+DEFAULT_USER_LOCATION = (40.0000, -76.0000)
+
+# Default categories used when generating synthetic datasets
+DEFAULT_CATEGORIES = ("Food Bank", "Housing", "Medical")
+
+# Empty dictionary-backed catalog populated dynamically via add_resource()
+# or populate_random_catalog(). Stores immutable (name, lat, lon) tuples to save RAM.
+RESOURCE_CATALOG = {}
 
 
-# 2. In-Place Randomized Quicksort
-def partition(items, low, high):
-    # 1. Pick a random pivot and move it to the end
+def validate_coordinates(lat, lon):
+    """Validates that latitude and longitude fall within standard GPS ranges."""
+    if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+        raise ValueError(f"GPS calculation error: invalid coordinates ({lat}, {lon}).")
+
+
+def calculate_distance(user_lat, user_lon, fac_lat, fac_lon):
+    """
+    Calculates straight-line Euclidean distance in miles between two GPS points
+    using the degree-to-mile conversion (1 degree ~= 69 miles) from Maria et al. (2020).
+    """
+    validate_coordinates(user_lat, user_lon)
+    validate_coordinates(fac_lat, fac_lon)
+    degree_distance = math.sqrt((fac_lat - user_lat) ** 2 + (fac_lon - user_lon) ** 2)
+    return round(degree_distance * 69.0, 4)
+
+
+def _partition(arr, low, high):
+    """Partitions (distance, name) tuples in place using a randomized pivot."""
     pivot_index = random.randint(low, high)
-    items[pivot_index], items[high] = items[high], items[pivot_index]
-    pivot = items[high]
+    arr[pivot_index], arr[high] = arr[high], arr[pivot_index]
+    pivot = arr[high]
 
-    # 2. Move items <= pivot to the left side
-    smaller_end = low - 1
-    for current in range(low, high):
-        if items[current] <= pivot:
-            smaller_end += 1
-            items[smaller_end], items[current] = items[current], items[smaller_end]
+    i = low - 1
+    for j in range(low, high):
+        if arr[j] <= pivot:
+            i += 1
+            arr[i], arr[j] = arr[j], arr[i]
 
-    # 3. Place the pivot right after the smaller items
-    pivot_pos = smaller_end + 1
-    items[pivot_pos], items[high] = items[high], items[pivot_pos]
-    return pivot_pos
+    arr[i + 1], arr[high] = arr[high], arr[i + 1]
+    return i + 1
 
 
-def quicksort(items, low, high):
+def _quicksort_in_place(arr, low, high):
+    """Recursively sorts the array in place using Randomized Quicksort."""
     if low < high:
-        pivot_pos = partition(items, low, high)
-        quicksort(items, low, pivot_pos - 1)
-        quicksort(items, pivot_pos + 1, high)
+        pivot_pos = _partition(arr, low, high)
+        _quicksort_in_place(arr, low, pivot_pos - 1)
+        _quicksort_in_place(arr, pivot_pos + 1, high)
 
 
-def quicksort_resources(items):
-    for distance, name in items:
-        if distance < 0:
-            raise ValueError(f"Negative distance ({distance} mi) for {name}")
-    if len(items) > 1:
-        quicksort(items, 0, len(items) - 1)
-    return items
+def quicksort_resources(resource_tuples):
+    """
+    Validates distances and sorts (distance, name) tuples in ascending order
+    using in-place Randomized Quicksort.
+    """
+    for dist, name in resource_tuples:
+        if dist < 0:
+            raise ValueError(
+                f"GPS calculation error: negative distance ({dist} mi) for {name}."
+            )
+
+    if len(resource_tuples) > 1:
+        _quicksort_in_place(resource_tuples, 0, len(resource_tuples) - 1)
+    return resource_tuples
 
 
-# 3. Cached Search and Dynamic Updates
 @lru_cache(maxsize=64)
-def cached_search(categories_key, max_radius):
-    walkable = []
+def cached_search(normalized_categories, rounded_lat, rounded_lon, max_radius):
+    """
+    Cached query engine for repeat searches within the same rounded GPS grid cell.
+    Returns immutable tuples so cached entries cannot be mutated by callers.
+    """
+    walkable_matches = []
     fallbacks = []
 
-    for category in categories_key:
-        if category not in RESOURCE_CATALOG:
+    for category in normalized_categories:
+        entry = RESOURCE_CATALOG.get(category)
+        if entry is None:
             continue
 
-        data = RESOURCE_CATALOG[category]
-        matches = []
-        for distance, name in data["resources"]:
-            if distance < 0:
-                raise ValueError(f"Negative distance ({distance} mi) for {name}")
-            if distance <= max_radius:
-                matches.append((distance, name))
+        category_matches = []
+        for name, fac_lat, fac_lon in entry["resources"]:
+            dist = calculate_distance(rounded_lat, rounded_lon, fac_lat, fac_lon)
+            if dist <= max_radius:
+                category_matches.append((dist, name))
 
-        if matches:
-            walkable.extend(matches)
+        if category_matches:
+            walkable_matches.extend(category_matches)
         else:
-            fallbacks.append(f"No walkable {category} nearby. Contact: {data['fallback']}")
+            fallbacks.append(entry["fallback"])
 
-    if walkable:
-        quicksort_resources(walkable)
+    if walkable_matches:
+        quicksort_resources(walkable_matches)
 
-    return tuple(walkable), tuple(fallbacks)
+    return tuple(walkable_matches), tuple(fallbacks)
 
 
-def find_walkable_resources(user_categories, max_radius=1.5):
-    unique_categories = sorted(set(user_categories))
-    categories_key = tuple(unique_categories)
+def find_walkable_resources(
+    user_categories,
+    user_lat=DEFAULT_USER_LOCATION[0],
+    user_lon=DEFAULT_USER_LOCATION[1],
+    max_radius=1.5,
+):
+    """
+    Finds and sorts walkable resources within max_radius miles of the user's GPS coordinates.
+    Rounds coordinates to 3 decimal places (~0.07 mi) to improve LRU cache hit rates.
+    """
+    if max_radius <= 0:
+        raise ValueError("Invalid max_radius: must be greater than 0.")
+    validate_coordinates(user_lat, user_lon)
 
-    results, fallbacks = cached_search(categories_key, max_radius)
+    # Deduplicate and sort categories so equivalent requests share the same cache key
+    normalized_categories = tuple(sorted(set(user_categories)))
+    rounded_lat = round(user_lat, 3)
+    rounded_lon = round(user_lon, 3)
+
+    results, fallbacks = cached_search(
+        normalized_categories, rounded_lat, rounded_lon, max_radius
+    )
     return list(results), list(fallbacks)
 
 
-def add_resource(category, distance, name, fallback="Contact 211 for assistance"):
+def clear_catalog():
+    """Clears all records from RESOURCE_CATALOG and resets the LRU cache."""
+    RESOURCE_CATALOG.clear()
+    cached_search.cache_clear()
+
+
+def add_resource(category, name, lat, lon, fallback=None):
+    """
+    Inserts a new (name, lat, lon) resource in O(1) average time
+    and clears the LRU cache to prevent stale search results.
+    """
+    validate_coordinates(lat, lon)
+
     if category not in RESOURCE_CATALOG:
-        RESOURCE_CATALOG[category] = {"resources": [], "fallback": fallback}
-    RESOURCE_CATALOG[category]["resources"].append((distance, name))
+        default_msg = (
+            fallback
+            if fallback is not None
+            else f"No walkable {category} nearby. Contact: Local Helpline (211)"
+        )
+        RESOURCE_CATALOG[category] = {"resources": [], "fallback": default_msg}
+
+    RESOURCE_CATALOG[category]["resources"].append((name, lat, lon))
+    cached_search.cache_clear()
+
+
+def populate_random_catalog(
+    num_resources,
+    categories=DEFAULT_CATEGORIES,
+    center_lat=DEFAULT_USER_LOCATION[0],
+    center_lon=DEFAULT_USER_LOCATION[1],
+    max_spread_miles=2.0,
+    distribution="uniform",
+    seed=42,
+):
+    """
+    Populates RESOURCE_CATALOG with synthetic (name, lat, lon) tuples using
+    Python's built-in random module. Supports 'uniform' and 'clustered' layouts.
+    """
+    validate_coordinates(center_lat, center_lon)
+    clear_catalog()
+
+    # Dedicated Random instance keeps dataset generation reproducible
+    rng = random.Random(seed)
+
+    for category in categories:
+        RESOURCE_CATALOG[category] = {
+            "resources": [],
+            "fallback": f"No walkable {category} nearby. Contact: Local Helpline (211)",
+        }
+
+    for i in range(num_resources):
+        category = categories[i % len(categories)]
+        name = f"{category} Site {i + 1}"
+
+        # In clustered mode, place 80% of facilities within a tight 0.25-mile downtown core
+        if distribution == "clustered" and rng.random() < 0.8:
+            spread_deg = 0.25 / 69.0
+        else:
+            spread_deg = max_spread_miles / 69.0
+
+        fac_lat = center_lat + rng.uniform(-spread_deg, spread_deg)
+        fac_lon = center_lon + rng.uniform(-spread_deg, spread_deg)
+        RESOURCE_CATALOG[category]["resources"].append((name, fac_lat, fac_lon))
+
     cached_search.cache_clear()
 
 
 if __name__ == "__main__":
-    results, fallbacks = find_walkable_resources(["Food Bank", "Medical"], max_radius=1.5)
-    print("Walkable Resources:", results)
-    print("Fallbacks:", fallbacks)
+    # Demo: generate 15 synthetic facilities and query both walkable presets
+    populate_random_catalog(15, distribution="uniform", seed=42)
+
+    for preset in WALKABLE_PRESETS:
+        results, fallbacks = find_walkable_resources(
+            ["Food Bank", "Medical", "Housing"], max_radius=preset
+        )
+        print(f"\nWalkable Resources ({preset} mi): {len(results)} found")
+        for dist, name in results:
+            print(f"  {dist:.4f} mi - {name}")
+        print(f"Fallbacks: {fallbacks}")
