@@ -14,19 +14,19 @@ DEFAULT_USER_LAT = 40.0000
 DEFAULT_USER_LON = -76.0000
 
 # Empty dictionary catalog populated dynamically.
-# Each facility is stored as a (name, lat, lon) tuple to keep memory usage low.
+# Each resource is stored as a (name, lat, lon) tuple to keep memory usage low.
 RESOURCE_CATALOG = {}
 
 
-def calculate_distance(user_lat, user_lon, fac_lat, fac_lon):
+def calculate_distance(user_lat, user_lon, resource_lat, resource_lon):
     """Calculates straight-line Euclidean distance in miles (Maria et al., 2020)."""
     if user_lat < -90 or user_lat > 90 or user_lon < -180 or user_lon > 180:
         raise ValueError("Invalid user GPS coordinates.")
-    if fac_lat < -90 or fac_lat > 90 or fac_lon < -180 or fac_lon > 180:
-        raise ValueError("Invalid facility GPS coordinates.")
+    if resource_lat < -90 or resource_lat > 90 or resource_lon < -180 or resource_lon > 180:
+        raise ValueError("Invalid resource GPS coordinates.")
 
-    lat_diff = fac_lat - user_lat
-    lon_diff = fac_lon - user_lon
+    lat_diff = resource_lat - user_lat
+    lon_diff = resource_lon - user_lon
     degree_distance = math.sqrt((lat_diff ** 2) + (lon_diff ** 2))
     miles = degree_distance * 69.0
     return round(miles, 4)
@@ -87,10 +87,10 @@ def cached_search(categories_tuple, rounded_lat, rounded_lon, max_radius):
 
         for resource in entry["resources"]:
             name = resource[0]
-            fac_lat = resource[1]
-            fac_lon = resource[2]
+            resource_lat = resource[1]
+            resource_lon = resource[2]
 
-            dist = calculate_distance(rounded_lat, rounded_lon, fac_lat, fac_lon)
+            dist = calculate_distance(rounded_lat, rounded_lon, resource_lat, resource_lon)
             if dist <= max_radius:
                 category_matches.append((dist, name))
 
@@ -132,10 +132,10 @@ def find_walkable_resources(
     return list(results), list(fallbacks)
 
 
-def add_resource(category, name, lat, lon, fallback=None):
-    """Adds a new (name, lat, lon) tuple to the catalog and clears the old cache."""
-    if lat < -90 or lat > 90 or lon < -180 or lon > 180:
-        raise ValueError("Invalid facility GPS coordinates.")
+def add_resource(category, name, resource_lat, resource_lon, fallback=None):
+    """Adds a new (name, lat, lon) resource tuple to the catalog and clears the cache."""
+    if resource_lat < -90 or resource_lat > 90 or resource_lon < -180 or resource_lon > 180:
+        raise ValueError("Invalid resource GPS coordinates.")
 
     if category not in RESOURCE_CATALOG:
         if fallback is None:
@@ -145,5 +145,5 @@ def add_resource(category, name, lat, lon, fallback=None):
             "fallback": fallback,
         }
 
-    RESOURCE_CATALOG[category]["resources"].append((name, lat, lon))
+    RESOURCE_CATALOG[category]["resources"].append((name, resource_lat, resource_lon))
     cached_search.cache_clear()
