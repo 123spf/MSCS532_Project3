@@ -1,108 +1,90 @@
 """
 ResourcesNow - Synthetic Dataset Generator
-Generates reproducible (name, lat, lon) resource facility records using Python's
-standard library random module for demos, stress testing, and benchmarking.
+Creates reproducible (name, lat, lon) resource records using Python's
+built-in random module for demos, stress testing, and benchmarking.
 """
 
-import math
 import random
 
 from resources_now import (
-    DEFAULT_USER_LOCATION,
+    DEFAULT_USER_LAT,
+    DEFAULT_USER_LON,
     RESOURCE_CATALOG,
     WALKABLE_PRESETS,
     cached_search,
     calculate_distance,
-    clear_catalog,
     find_walkable_resources,
-    validate_coordinates,
 )
 
 DEFAULT_CATEGORIES = ("Food Bank", "Housing", "Medical")
 
 
-def _random_point_within_radius(center_lat, center_lon, radius_miles, rng):
+def populate_random_catalog(num_resources, distribution="uniform", seed=42):
     """
-    Generates a random (lat, lon) coordinate guaranteed to stay inside radius_miles
-    under Euclidean distance without requiring trigonometry.
+    Fills RESOURCE_CATALOG with synthetic (name, lat, lon) resource tuples.
+    Supports 'uniform' (spread out) and 'clustered' (downtown core) layouts.
     """
-    max_axis_deg = ((radius_miles - 0.001) / 69.0) / math.sqrt(2)
-    fac_lat = center_lat + rng.uniform(-max_axis_deg, max_axis_deg)
-    fac_lon = center_lon + rng.uniform(-max_axis_deg, max_axis_deg)
-    return fac_lat, fac_lon
+    random.seed(seed)
+    RESOURCE_CATALOG.clear()
+    cached_search.cache_clear()
 
-
-def populate_random_catalog(
-    num_resources,
-    categories=DEFAULT_CATEGORIES,
-    center_lat=DEFAULT_USER_LOCATION[0],
-    center_lon=DEFAULT_USER_LOCATION[1],
-    max_spread_miles=2.0,
-    distribution="uniform",
-    seed=42,
-):
-    """
-    Populates RESOURCE_CATALOG with synthetic (name, lat, lon) tuples.
-    Supports 'uniform' (spread-out) and 'clustered' (downtown core) layouts.
-    """
-    validate_coordinates(center_lat, center_lon)
-    clear_catalog()
-    rng = random.Random(seed)
-
-    for category in categories:
+    # Set up each category with an empty resource list and 211 fallback
+    for category in DEFAULT_CATEGORIES:
         RESOURCE_CATALOG[category] = {
             "resources": [],
             "fallback": f"No walkable {category} nearby. Contact: Local Helpline (211)",
         }
 
     for i in range(num_resources):
-        category = categories[i % len(categories)]
-        name = f"{category} Site {i + 1}"
+        category = DEFAULT_CATEGORIES[i % len(DEFAULT_CATEGORIES)]
+        name = f"{category} Resource {i + 1}"
 
-        # In clustered mode, place 80% of facilities within a 0.25-mile downtown block
-        if distribution == "clustered" and rng.random() < 0.8:
-            radius = min(0.25, max_spread_miles)
+        # In clustered mode, place 80% of resources inside a 0.25-mile downtown area
+        if distribution == "clustered" and random.random() < 0.8:
+            spread_miles = 0.25
         else:
-            radius = max_spread_miles
+            spread_miles = 2.0
 
-        fac_lat, fac_lon = _random_point_within_radius(center_lat, center_lon, radius, rng)
-        RESOURCE_CATALOG[category]["resources"].append((name, fac_lat, fac_lon))
+        spread_deg = spread_miles / 69.0
+        resource_lat = DEFAULT_USER_LAT + random.uniform(-spread_deg, spread_deg)
+        resource_lon = DEFAULT_USER_LON + random.uniform(-spread_deg, spread_deg)
 
-    cached_search.cache_clear()
+        RESOURCE_CATALOG[category]["resources"].append((name, resource_lat, resource_lon))
 
 
-def generate_benchmark_records(
-    num_resources,
-    center_lat=DEFAULT_USER_LOCATION[0],
-    center_lon=DEFAULT_USER_LOCATION[1],
-    max_radius=1.5,
-    distribution="uniform",
-    seed=42,
-):
+def generate_benchmark_records(num_resources, max_radius=1.5, distribution="uniform", seed=42):
     """
-    Generates a list of (distance, name) tuples calculated from synthetic GPS coordinates
-    guaranteed to fall within max_radius, ready for cross-phase sorting benchmarks.
+    Generates (distance, name) resource tuples calculated from random GPS coordinates
+    that all fall within max_radius miles for sorting benchmarks.
     """
-    validate_coordinates(center_lat, center_lon)
-    rng = random.Random(seed)
+    random.seed(seed)
     records = []
+    count = 1
 
-    for i in range(num_resources):
-        name = f"Facility {i + 1}"
-        if distribution == "clustered" and rng.random() < 0.8:
-            radius = min(0.25, max_radius)
+    while len(records) < num_resources:
+        if distribution == "clustered" and random.random() < 0.8:
+            spread_miles = 0.25
         else:
-            radius = max_radius
+            spread_miles = max_radius
 
-        fac_lat, fac_lon = _random_point_within_radius(center_lat, center_lon, radius, rng)
-        dist = calculate_distance(center_lat, center_lon, fac_lat, fac_lon)
-        records.append((dist, name))
+        spread_deg = spread_miles / 69.0
+        resource_lat = DEFAULT_USER_LAT + random.uniform(-spread_deg, spread_deg)
+        resource_lon = DEFAULT_USER_LON + random.uniform(-spread_deg, spread_deg)
+
+        dist = calculate_distance(
+            DEFAULT_USER_LAT, DEFAULT_USER_LON, resource_lat, resource_lon
+        )
+
+        # Keep only coordinates that stay inside the exact walking radius
+        if dist <= max_radius:
+            name = f"Resource {count}"
+            records.append((dist, name))
+            count = count + 1
 
     return records
 
 
 if __name__ == "__main__":
-    # Quick demo: generate 15 synthetic facilities and query both walkable presets
     populate_random_catalog(15, distribution="uniform", seed=42)
 
     for preset in WALKABLE_PRESETS:
